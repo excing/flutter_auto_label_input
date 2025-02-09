@@ -1,5 +1,7 @@
 library flutter_autocomplete_label;
 
+import 'dart:io';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -591,7 +593,7 @@ class _AutocompleteLabelState<T> extends State<AutocompleteLabel> {
   void _openOptionBox() {
     if (this.isOpened) return;
     assert(this._overlayEntry != null);
-    Overlay.of(context)!.insert(this._overlayEntry!);
+    Overlay.of(context).insert(this._overlayEntry!);
     this.isOpened = true;
   }
 
@@ -615,7 +617,7 @@ class _AutocompleteLabelState<T> extends State<AutocompleteLabel> {
     widget.autocompleteLabelController.addListener(_handleValuesChanged);
     widget.textEditingController.addListener(_handleTextChanged);
     _offsetDetectorController = OffsetDetectorController();
-    SchedulerBinding.instance!.addPostFrameCallback((duration) {
+    SchedulerBinding.instance.addPostFrameCallback((duration) {
       if (mounted) {
         _overlayEntry = _createOverlayEntry();
       }
@@ -641,7 +643,7 @@ class _AutocompleteLabelState<T> extends State<AutocompleteLabel> {
       oldWidget.textEditingController.removeListener(_handleTextChanged);
       widget.textEditingController.addListener(_handleTextChanged);
     }
-    SchedulerBinding.instance!.addPostFrameCallback((Duration _) {
+    SchedulerBinding.instance.addPostFrameCallback((Duration _) {
       _updateOptionBox();
     });
   }
@@ -652,7 +654,7 @@ class _AutocompleteLabelState<T> extends State<AutocompleteLabel> {
     widget.autocompleteLabelController.removeListener(_handleValuesChanged);
     widget.textEditingController.removeListener(_handleTextChanged);
     widget.focusNode.removeListener(_handleFocusChanged);
-    _detachKeyboardIfAttached();
+    _detachKeyboardListenerIfAttached();
   }
 
   OverlayEntry _createOverlayEntry() {
@@ -872,6 +874,7 @@ class _AutocompleteLabelState<T> extends State<AutocompleteLabel> {
     if (widget.textEditingController.text == "" &&
         value.logicalKey == LogicalKeyboardKey.backspace) {
       widget.autocompleteLabelController.removeLast();
+      _updateOptionBox();
     } else if (value.logicalKey == LogicalKeyboardKey.escape) {
       if (!isOpened) return;
       if (widget.autocompleteLabelController._selectOptionIndex ==
@@ -881,6 +884,8 @@ class _AutocompleteLabelState<T> extends State<AutocompleteLabel> {
         widget.autocompleteLabelController._cancelSelected();
         _updateOptionBox();
       }
+    } else {
+      _updateOptionBox();
     }
   }
 
@@ -899,24 +904,43 @@ class _AutocompleteLabelState<T> extends State<AutocompleteLabel> {
   }
 
   void _handleFocusChanged() {
-    if (widget.focusNode.hasFocus)
-      _attachKeyboardIfDetached();
-    else
-      _detachKeyboardIfAttached();
+    if (widget.focusNode.hasFocus) {
+      _attachKeyboardListenerIfDetached();
+    } else {
+      _detachKeyboardListenerIfAttached();
+    }
   }
 
   bool _listening = false;
 
-  void _attachKeyboardIfDetached() {
+  void _attachKeyboardListenerIfDetached() {
     if (_listening) return;
-    RawKeyboard.instance.addListener(_handleRawKeyEvent);
+    // Keyboard events are not available on iOS yet ...
+    // https://github.com/flutter/flutter/issues/62774
+    if (!kIsWeb && Platform.isIOS) {
+      widget.textEditingController.addListener(_simulateRawKeyEvent);
+    } else {
+      RawKeyboard.instance.addListener(_handleRawKeyEvent);
+    }
     _listening = true;
   }
 
-  void _detachKeyboardIfAttached() {
+  void _detachKeyboardListenerIfAttached() {
     if (!_listening) return;
-    RawKeyboard.instance.removeListener(_handleRawKeyEvent);
+    // Keyboard events are not available on iOS yet ...
+    // https://github.com/flutter/flutter/issues/62774
+    if (!kIsWeb && Platform.isIOS) {
+      widget.textEditingController.removeListener(_simulateRawKeyEvent);
+    } else {
+      RawKeyboard.instance.removeListener(_handleRawKeyEvent);
+    }
     _listening = false;
+  }
+
+  void _simulateRawKeyEvent() {
+    String value = widget.textEditingController.text;
+    final event = RawKeyDownEvent(data: RawKeyEventDataAndroid(), character: value);
+    _handleRawKeyEvent(event);
   }
 
   void _handleRawKeyEvent(RawKeyEvent event) {
